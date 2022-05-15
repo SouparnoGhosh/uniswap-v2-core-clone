@@ -4,7 +4,7 @@ pragma solidity >=0.8.4;
 
 import "./interfaces/IUniswapV2ERC20.sol";
 
-abstract contract UniswapV2ERC20 is IUniswapV2ERC20 {
+contract UniswapV2ERC20 is IUniswapV2ERC20 {
     //solhint-disable
     string public constant override name = "Uniswap V2";
     string public constant override symbol = "UNI-V2";
@@ -27,6 +27,8 @@ abstract contract UniswapV2ERC20 is IUniswapV2ERC20 {
         assembly {
             chainId := chainid()
         }
+
+        //used to prevent similar signature of 1 DApp being used maliciously for another DApp
         DOMAIN_SEPARATOR = keccak256(
             abi.encode(
                 keccak256(
@@ -99,5 +101,42 @@ abstract contract UniswapV2ERC20 is IUniswapV2ERC20 {
         }
         _transfer(from, to, value);
         return true;
+    }
+
+    function permit(
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external override {
+        //solhint-disable-next-line not-rely-on-time
+        require(deadline >= block.timestamp, "UniswapV2: EXPIRED");
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                DOMAIN_SEPARATOR,
+                //permit typehash has all variables except r,s,v
+                //nonce is received from the contract
+                keccak256(
+                    abi.encode(
+                        PERMIT_TYPEHASH,
+                        owner,
+                        spender,
+                        value,
+                        nonces[owner]++,
+                        deadline
+                    )
+                )
+            )
+        );
+        address recoveredAddress = ecrecover(digest, v, r, s);
+        require(
+            recoveredAddress != address(0) && recoveredAddress == owner,
+            "UniswapV2: INVALID_SIGNATURE"
+        );
+        _approve(owner, spender, value);
     }
 }
